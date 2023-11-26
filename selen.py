@@ -3,8 +3,7 @@ import time
 import zipfile
 
 from selenium import webdriver
-from selenium.common.exceptions import NoSuchElementException, ElementNotInteractableException, TimeoutException, \
-    WebDriverException
+from selenium.common.exceptions import NoSuchElementException, TimeoutException, WebDriverException
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
@@ -144,6 +143,13 @@ def get_phone(connection, driver: webdriver.Chrome, id_bd):
         pass
 
 
+def get_element_text(driver: webdriver.Chrome, path: str) -> str:
+    try:
+        return driver.find_element(By.XPATH, path).text
+    except NoSuchElementException:
+        return ''
+
+
 def fill_data(connection, id_db):
     driver = None
     # link = f'https://fedresurs.ru/search/encumbrances?offset=0&limit=15&searchString={id_db}&group=Leasing'
@@ -153,35 +159,51 @@ def fill_data(connection, id_db):
     ПУБЛИКАТОР - куда его грузить???
     '''
     publisher_name = ''
-    publisher_inn = ''
-    publisher_ogrn = ''
+    publisher_inn = 0
+    publisher_ogrn = 0
 
     '''
     CARDS
     '''
+    type_card = ''
     url = ''
     real_id = id_db
     period = ''
     dogovor = ''
-    dogovor_date = ''
-    date_publish = ''
-    type_name = ''  # FinancialLeaseContract
-    period_start = ''
-    period_end = ''
+    dogovor_date = None
+    date_publish = None
+    period_start = None
+    period_end = None
+    comments = ''
 
-    '''
-    CARD_LESSEES
-    '''
-    lessees_name = ''
-    lessees_inn = ''
-    lessees_ogrn = ''
+    """
+    CARDS_CHANGE
+    """
+    dogovor_main_real_id = ''
+    dogovor_main_url = ''
+    date_add = None
+
+    """
+    CARDS_STOP
+    """
+    reason_stop = ''
+    dogovor_stop_date = None
 
     '''
     CARD_LESSORS
+    Лизингодатели
     '''
     lessor_name = ''
-    lessor_inn = ''
-    lessor_ogrn = ''
+    lessor_inn = 0
+    lessor_ogrn = 0
+
+    '''
+    CARD_LESSEES
+    Лизингополучатели
+    '''
+    lessees_name = ''
+    lessees_inn = 0
+    lessees_ogrn = 0
 
     '''
     CARD_OBJECTS
@@ -195,6 +217,9 @@ def fill_data(connection, id_db):
         driver = get_selenium_driver(True, secure.GLOB_ID)
         driver.get(link)
 
+        '''
+        SEARCH
+        '''
         open_expand_form = WebDriverWait(driver, 5).until(ex_cond.presence_of_element_located((
             By.CLASS_NAME, 'open_expand_form')))
         if open_expand_form:
@@ -205,7 +230,6 @@ def fill_data(connection, id_db):
         val = driver.find_element(By.CLASS_NAME, 'value')
         if val:
             val.click()
-
             options = WebDriverWait(driver, 5).until(ex_cond.presence_of_element_located((
                 By.CLASS_NAME, 'options')))
             if options:
@@ -219,24 +243,33 @@ def fill_data(connection, id_db):
         if but_submit:
             but_submit.click()
 
+        '''
+        GET CARD
+        '''
         card_link = WebDriverWait(driver, 5).until(ex_cond.presence_of_element_located((
             By.XPATH, '//div[contains(@class, "encumbrances-result__body")]')))
         if card_link:
             link = card_link.find_element(By.TAG_NAME, 'a').get_attribute('href')
             driver.get(link)
 
+            '''
+            WORK WITH CARD
+            '''
             status = ''
-            opeartion = ''
+            operation = ''
             subject = WebDriverWait(driver, 5).until(ex_cond.presence_of_element_located((
                 By.CLASS_NAME, 'subject')))
             if subject:
-                opeartion = subject.find_element(By.TAG_NAME, 'h2').text.split(' ')[0].lower()
-            if opeartion == 'заключение':
-                status = 'sign'
-            elif opeartion == 'изменение':
-                status = 'change'
-            elif opeartion == 'прекращение':
-                status = 'stop'
+                operation = subject.find_element(By.TAG_NAME, 'h2').text.split(' ')[0].lower()
+                if operation == 'заключение':
+                    status = 'sign'
+                    type_card = 'FinancialLeaseContract'
+                elif operation == 'изменение':
+                    status = 'change'
+                    type_card = 'ChangeFinancialLeaseContract'
+                elif operation == 'прекращение':
+                    status = 'stop'
+                    type_card = 'StopFinancialLeaseContract'
 
             url = link.split('/')[-1].replace('-', '').upper()
 
@@ -257,38 +290,58 @@ def fill_data(connection, id_db):
                     publisher_ogrn = bp[2]
 
                 '''
-                CARDS
+                TABLE CARDS
                 '''
                 fields = cards[1].find_elements(By.CLASS_NAME, 'field')
                 if fields:
-                    dog = fields[0].find_element(By.CLASS_NAME, 'field-value')
+                    i = 0
+                    j = 1
+                    if len(fields) == 5:
+                        i = 1
+                        j = 2
+                        main_dog = fields[0].find_element(By.CLASS_NAME, 'field-value')
+                        if main_dog:
+                            dogovor_main_real_id = main_dog.find_element(By.TAG_NAME, 'span').text[1:]
+                            href = main_dog.find_element(By.TAG_NAME, 'a').get_attribute('href')
+                            if href:
+                                dogovor_main_url = href.split('/')[-1]
+                        date_add = time.strftime('%Y-%m-%d %H:%M:%S')
+                    if len(fields) == 6:
+                        i = 3
+                        j = 4
+                        main_dog = fields[0].find_element(By.CLASS_NAME, 'field-value')
+                        if main_dog:
+                            dogovor_main_real_id = main_dog.find_element(By.TAG_NAME, 'span').text[1:]
+                            href = main_dog.find_element(By.TAG_NAME, 'a').get_attribute('href')
+                            if href:
+                                dogovor_main_url = href.split('/')[-1]
+                        dogovor_stop_date = fields[1].find_element(By.CLASS_NAME, 'field-value').text
+                        reason_stop = fields[2].find_element(By.CLASS_NAME, 'field-value').text
+
+                    dog = fields[i].find_element(By.CLASS_NAME, 'field-value')
                     if dog:
                         vals = dog.find_elements(By.TAG_NAME, 'span')
                         if vals:
                             dogovor = vals[0].text
                             dogovor_date = vals[1].text.split(' ')[1]
-                    srok_arendy = fields[1].find_element(By.CLASS_NAME, 'field-value')
-                    if srok_arendy:
-                        period = srok_arendy.text.replace(' ', '')
-                        period_start = period.split('-')[0]
-                        period_end = period.split('-')[1]
+                    if status == 'sign' or status == 'change':
+                        srok_arendy = fields[j].find_element(By.CLASS_NAME, 'field-value')
+                        if srok_arendy:
+                            period = srok_arendy.text.replace(' ', '')
+                            period_start = period.split('-')[0]
+                            period_end = period.split('-')[1]
+                try:
+                    com_el = cards[1].find_element(By.XPATH, '//div[contains(text(), "Комментарий")]')
+                    if com_el:
+                        div = com_el.find_element(By.XPATH, '..')
+                        comments = div.find_element(By.TAG_NAME, 'span').text
+                except NoSuchElementException:
+                    pass
 
                 '''
-                CARD_LESSEES
+                TABLE CARD_LESSORS
                 '''
-                fields_lessees = cards[1].find_element(By.XPATH, '//div[contains(@class, "lessees")]')
-                if fields_lessees:
-                    lessees = fields_lessees.find_element(By.CLASS_NAME, 'field-value')
-                    if lessees:
-                        bp = get_bp(lessees)
-                        lessees_name = bp[0]
-                        lessees_inn = bp[1]
-                        lessees_ogrn = bp[2]
-
-                '''
-                CARD_LESSORS
-                '''
-                field_lessors = cards[1].find_element(By.XPATH, '//div[contains(@class, "field lessors")]')
+                field_lessors = cards[1].find_element(By.XPATH, '//div[contains(@class, "lessees")]')  # lessors
                 if field_lessors:
                     lessor = field_lessors.find_element(By.CLASS_NAME, 'field-value')
                     if lessor:
@@ -298,19 +351,32 @@ def fill_data(connection, id_db):
                         lessor_ogrn = bp[2]
 
                 '''
-                CARD_OBJECTS
+                TABLE CARD_LESSEES
                 '''
-                table = cards[1].find_element(By.CLASS_NAME, 'info_table')
-                if table:
-                    table_body = table.find_element(By.TAG_NAME, 'tbody')
-                    if table_body:
-                        rows = table_body.find_elements(By.TAG_NAME, 'tr')
-                        for row in rows:
-                            cols = row.find_elements(By.TAG_NAME, 'td')
-                            object_name = cols[0].text
-                            object_class = cols[1].find_element(By.TAG_NAME, 'span').text
-                            object_description = cols[2].text.rstrip()
-                            object_total = f'{object_name} {object_class} {object_description}'
+                fields_lessees = cards[1].find_element(By.XPATH, '//div[contains(@class, "lessors")]')  # lessees
+                if fields_lessees:
+                    lessees = fields_lessees.find_element(By.CLASS_NAME, 'field-value')
+                    if lessees:
+                        bp = get_bp(lessees)
+                        lessees_name = bp[0]
+                        lessees_inn = bp[1]
+                        lessees_ogrn = bp[2]
+
+                '''
+                TABLE CARD_OBJECTS
+                '''
+                if status == 'sign' or status == 'change':
+                    table = cards[1].find_element(By.CLASS_NAME, 'info_table')
+                    if table:
+                        table_body = table.find_element(By.TAG_NAME, 'tbody')
+                        if table_body:
+                            rows = table_body.find_elements(By.TAG_NAME, 'tr')
+                            for row in rows:
+                                cols = row.find_elements(By.TAG_NAME, 'td')
+                                object_name = cols[0].text
+                                object_class = cols[1].find_element(By.TAG_NAME, 'span').text
+                                object_description = cols[2].text.rstrip()
+                                object_total = f'{object_name} {object_class} {object_description}'
 
         time.sleep(5)
         # get_phone(connection, driver, id_db)
@@ -332,11 +398,12 @@ def fill_data(connection, id_db):
 
 def get_bp(data):
     bp = []
-    inn = ''
-    ogrn = ''
+    inn = 0
+    ogrn = 0
     name = data.text
     spl = name.split('\n')
     if len(spl) == 3:
+        name = spl[0]
         inn = spl[1].split(':')[-1]
         ogrn = spl[2].split(':')[-1]
     bp.append(name)
