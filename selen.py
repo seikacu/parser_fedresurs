@@ -319,7 +319,6 @@ def fill_data(connection, id_db):
                           reason_stop, dogovor_date, dogovor_stop_date, date_publish, comments, type_card, done)
 
 
-
 def get_main_dog(fields):
     vals = []
     dogovor_id = ''
@@ -351,7 +350,7 @@ def get_bp(data):
     return bp
 
 
-def change_proxy(connection, driver, ex, id_bd):
+def change_proxy(connection, ex, id_bd):
     reason = "clicked_get_phone _ ОШИБКА ПРОКСИ"
     secure.log.write_log(reason, ex)
     # link = driver.current_url

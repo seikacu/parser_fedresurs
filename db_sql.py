@@ -9,7 +9,7 @@ def connect_db():
         user=PSql.user,
         password=PSql.password,
         database=PSql.db_name,
-        charset=PSql.charset,
+        # charset=PSql.charset,
         cursorclass=pymysql.cursors.DictCursor
     )
     return connection
