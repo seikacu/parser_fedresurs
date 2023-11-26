@@ -2,20 +2,19 @@ import threading
 import time
 import zipfile
 
+import secure
+
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException, TimeoutException, WebDriverException
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from selenium.webdriver.support import expected_conditions as ex_cond
 from fake_useragent import UserAgent
-
 from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 
-import secure
-from db_sql import add_phone1, add_phone2
+from db_sql import insert_sign_cards, insert_change_cards, insert_stop_cards
 
 
 def set_driver_options(options):
@@ -61,88 +60,6 @@ def get_selenium_driver(use_proxy, num_proxy):
     return driver
 
 
-def extract_phone_numbers(connection, driver: webdriver.Chrome, id_db):
-    try:
-        phone1 = driver.find_element(By.XPATH, "//span[contains(@id, 'phone_td_1')]").text
-        if phone1.endswith("***"):
-            return False
-        add_phone1(connection, id_db, phone1)
-    except NoSuchElementException:
-        add_phone1(connection, id_db, "Объявление снято с публикации")
-        reason = "selen_extract_phone_numbers_ Объявление снято с публикации"
-        secure.log.write_log(reason, '')
-        pass
-    try:
-        phone2 = driver.find_element(By.XPATH, "//span[contains(@id, 'phone_td_2')]").text
-        add_phone2(connection, id_db, phone2)
-    except NoSuchElementException:
-        reason = "selen_extract_phone_numbers_Отсутствует 2-ой телефон"
-        secure.log.write_log(reason, '')
-        pass
-
-
-def get_phone(connection, driver: webdriver.Chrome, id_bd):
-    try:
-        try:
-            try:
-                driver.find_element(By.XPATH, "//span[contains(@id, 'phone_td_1')]")
-            except NoSuchElementException:
-                add_phone1(connection, id_bd, "Объявление снято с публикации")
-                reason = "get_phone Номер телефона отсутствует, и/или объявление снято с публикации"
-                secure.log.write_log(reason, '')
-                pass
-                return
-            show_phone = WebDriverWait(driver, 10).until(ex_cond.presence_of_element_located((
-                By.XPATH, "//a[contains(@onclick, '_show_phone')]")))
-            if show_phone.is_displayed():
-                driver.execute_script("arguments[0].click();", show_phone)
-                time.sleep(1)
-            try:
-                # ПРОВЕРКА НА ВСПЛЫВАЮЩЕЕ ОКНО "Вы зашли по неверной ссылке,
-                # либо у объявления истёк срок публикации. ss.lv"
-                alert = driver.find_element(By.ID, "alert_msg")
-                if alert:
-                    alert_txt = alert.text
-                    if 'Вы зашли по неверной ссылке' in alert_txt:
-                        # link = driver.current_url
-                        if secure.GLOB_ID < 1:
-                            secure.GLOB_ID += 1
-                        else:
-                            secure.GLOB_ID = 0
-                        print('СМЕНА PROXY ПО ALERT')
-                        secure.log.write_log("СМЕНА PROXY ПО ALERT: ", f'new tk.GLOB_ID: {secure.GLOB_ID}')
-                        time.sleep(600)
-                        fill_data(connection, id_bd)
-            except NoSuchElementException:
-                reason = "selen_get_phone_ Верная ссылка - объявление актуально"
-                secure.log.write_log(reason, '')
-                pass
-            pass
-        except TimeoutException as ex:
-            reason = ("selen_get_phone_timeout - Кнопка Показать номер телефона отсутствует, и/или объявление снято с "
-                      "публикации")
-            secure.log.write_log(reason, ex)
-            pass
-        except NoSuchElementException:
-            reason = "selen_get_phone_ Кнопка Показать номер телефона отсутствует, и/или объявление снято с публикации"
-            secure.log.write_log(reason, f'Номер id в БД: {id_bd}')
-            pass
-        time.sleep(1)
-
-        if extract_phone_numbers(connection, driver, id_bd) is False:
-            print("ПОВТОР ПОЛУЧЕНИЯ НОМЕРА")
-            secure.log.write_log("ПОВТОР ПОЛУЧЕНИЯ НОМЕРА", f'Запись в БД: {id_bd}')
-            driver.refresh()
-            get_phone(connection, driver, id_bd)
-    except NoSuchElementException as ex:
-        reason = "selen_get_phone_Элемент не найден"
-        secure.log.write_log(reason, ex)
-        pass
-    except WebDriverException as ex:
-        change_proxy(connection, driver, ex, id_bd)
-        pass
-
-
 def get_element_text(driver: webdriver.Chrome, path: str) -> str:
     try:
         return driver.find_element(By.XPATH, path).text
@@ -153,8 +70,10 @@ def get_element_text(driver: webdriver.Chrome, path: str) -> str:
 def fill_data(connection, id_db):
     driver = None
     # link = f'https://fedresurs.ru/search/encumbrances?offset=0&limit=15&searchString={id_db}&group=Leasing'
-    # link = 'https://fedresurs.ru/search/encumbrances?offset=0&limit=15&group=Leasing'
     link = 'https://fedresurs.ru/search/encumbrances'
+
+    done = 0
+
     '''
     ПУБЛИКАТОР - куда его грузить???
     '''
@@ -213,6 +132,8 @@ def fill_data(connection, id_db):
     object_description = ''
     object_total = ''
 
+    status = ''
+
     try:
         driver = get_selenium_driver(True, secure.GLOB_ID)
         driver.get(link)
@@ -255,7 +176,6 @@ def fill_data(connection, id_db):
             '''
             WORK WITH CARD
             '''
-            status = ''
             operation = ''
             subject = WebDriverWait(driver, 5).until(ex_cond.presence_of_element_located((
                 By.CLASS_NAME, 'subject')))
@@ -299,22 +219,16 @@ def fill_data(connection, id_db):
                     if len(fields) == 5:
                         i = 1
                         j = 2
-                        main_dog = fields[0].find_element(By.CLASS_NAME, 'field-value')
-                        if main_dog:
-                            dogovor_main_real_id = main_dog.find_element(By.TAG_NAME, 'span').text[1:]
-                            href = main_dog.find_element(By.TAG_NAME, 'a').get_attribute('href')
-                            if href:
-                                dogovor_main_url = href.split('/')[-1]
+                        vals = get_main_dog(fields)
+                        dogovor_main_real_id = vals[0]
+                        dogovor_main_url = vals[1]
                         date_add = time.strftime('%Y-%m-%d %H:%M:%S')
                     if len(fields) == 6:
                         i = 3
                         j = 4
-                        main_dog = fields[0].find_element(By.CLASS_NAME, 'field-value')
-                        if main_dog:
-                            dogovor_main_real_id = main_dog.find_element(By.TAG_NAME, 'span').text[1:]
-                            href = main_dog.find_element(By.TAG_NAME, 'a').get_attribute('href')
-                            if href:
-                                dogovor_main_url = href.split('/')[-1]
+                        vals = get_main_dog(fields)
+                        dogovor_main_real_id = vals[0]
+                        dogovor_main_url = vals[1]
                         dogovor_stop_date = fields[1].find_element(By.CLASS_NAME, 'field-value').text
                         reason_stop = fields[2].find_element(By.CLASS_NAME, 'field-value').text
 
@@ -378,22 +292,47 @@ def fill_data(connection, id_db):
                                 object_description = cols[2].text.rstrip()
                                 object_total = f'{object_name} {object_class} {object_description}'
 
-        time.sleep(5)
-        # get_phone(connection, driver, id_db)
-
     except NoSuchElementException as ex:
         reason = "selen_fill_data_Элемент не найден"
         secure.log.write_log(reason, ex)
-        # pass
+        done = 1
+        pass
     except WebDriverException as ex:
         print(ex)
         change_proxy(connection, driver, ex, id_db)
-        # pass
+        done = 1
+        pass
     finally:
         if driver:
             driver.close()
             driver.quit()
             print("[INFO] Selen driver closed")
+
+    if status == 'sign':
+        insert_sign_cards(connection, url, real_id, period, dogovor, dogovor_date, date_publish, type_card,
+                          period_start, period_end, comments, done)
+    elif status == 'change':
+        insert_change_cards(connection, url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url,
+                            dogovor_date, date_publish, type_card, period_start, period_end, date_add, comments, done)
+    elif status == 'stop':
+        insert_stop_cards(connection, url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url,
+                          reason_stop, dogovor_date, dogovor_stop_date, date_publish, comments, type_card, done)
+
+
+
+def get_main_dog(fields):
+    vals = []
+    dogovor_id = ''
+    dogovor_url = ''
+    dog = fields[0].find_element(By.CLASS_NAME, 'field-value')
+    if dog:
+        dogovor_id = dog.find_element(By.TAG_NAME, 'span').text[1:]
+        href = dog.find_element(By.TAG_NAME, 'a').get_attribute('href')
+        if href:
+            dogovor_url = href.split('/')[-1]
+    vals.append(dogovor_id)
+    vals.append(dogovor_url)
+    return vals
 
 
 def get_bp(data):
