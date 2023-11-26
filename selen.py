@@ -1,6 +1,7 @@
 import threading
 import time
 import zipfile
+import uuid
 
 import secure
 
@@ -14,7 +15,7 @@ from fake_useragent import UserAgent
 from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 
-from db_sql import insert_sign_cards, insert_change_cards, insert_stop_cards
+from db_sql import insert_sign_cards, insert_change_cards, insert_stop_cards, insert_less, insert_objects
 
 
 def set_driver_options(options):
@@ -131,6 +132,7 @@ def fill_data(connection, id_db):
     object_class = ''
     object_description = ''
     object_total = ''
+    object_guid = ''
 
     status = ''
 
@@ -176,7 +178,6 @@ def fill_data(connection, id_db):
             '''
             WORK WITH CARD
             '''
-            operation = ''
             subject = WebDriverWait(driver, 5).until(ex_cond.presence_of_element_located((
                 By.CLASS_NAME, 'subject')))
             if subject:
@@ -291,9 +292,13 @@ def fill_data(connection, id_db):
                                 object_class = cols[1].find_element(By.TAG_NAME, 'span').text
                                 object_description = cols[2].text.rstrip()
                                 object_total = f'{object_name} {object_class} {object_description}'
-
     except NoSuchElementException as ex:
         reason = "selen_fill_data_Элемент не найден"
+        secure.log.write_log(reason, ex)
+        done = 1
+        pass
+    except TimeoutException as ex:
+        reason = "selen_fill_data_Нет ответа от web_element"
         secure.log.write_log(reason, ex)
         done = 1
         pass
@@ -307,16 +312,32 @@ def fill_data(connection, id_db):
             driver.close()
             driver.quit()
             print("[INFO] Selen driver closed")
-
+    if status == 'sign' or status == 'change':
+        object_guid = generate_guid()
     if status == 'sign':
         insert_sign_cards(connection, url, real_id, period, dogovor, dogovor_date, date_publish, type_card,
                           period_start, period_end, comments, done)
+        insert_less(connection, url, lessees_name, lessees_inn, lessees_ogrn, 'card_lessees')
+        insert_less(connection, url, lessor_name, lessor_inn, lessor_ogrn, 'card_lessors')
+        insert_objects(connection, url, object_guid, object_name, object_class, object_description, object_total,
+                       'card_objects')
     elif status == 'change':
         insert_change_cards(connection, url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url,
                             dogovor_date, date_publish, type_card, period_start, period_end, date_add, comments, done)
+        insert_less(connection, url, lessees_name, lessees_inn, lessees_ogrn, 'card_lessees_change')
+        insert_less(connection, url, lessor_name, lessor_inn, lessor_ogrn, 'card_lessors_change')
+        insert_objects(connection, url, object_guid, object_name, object_class, object_description, object_total,
+                       'card_objects_change')
     elif status == 'stop':
         insert_stop_cards(connection, url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url,
                           reason_stop, dogovor_date, dogovor_stop_date, date_publish, comments, type_card, done)
+        insert_less(connection, url, lessees_name, lessees_inn, lessees_ogrn, 'card_lessees_stop')
+        insert_less(connection, url, lessor_name, lessor_inn, lessor_ogrn, 'card_lessors_stop')
+
+
+def generate_guid():
+    guid = uuid.uuid4()
+    return str(guid)
 
 
 def get_main_dog(fields):
