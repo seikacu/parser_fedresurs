@@ -299,7 +299,7 @@ def fill_data(connection, id_db):
         pass
     except WebDriverException as ex:
         print(ex)
-        change_proxy(connection, driver, ex, id_db)
+        change_proxy(connection, ex, id_db)
         done = 1
         pass
     finally:
