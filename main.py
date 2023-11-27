@@ -4,7 +4,7 @@ import shutil
 
 from db_sql import connect_db
 from secure import log
-from selen import multi_selen
+from selen import multi_selen, test
 
 
 def get_num_line(line):
@@ -28,9 +28,9 @@ def get_nums_list(start_path, path_done):
                 # print(f'line len is {size}')
 
         # Перемещение прочитанного файла в отдельную папку
-        # destination_path = os.path.join(path_done, file)
-        # shutil.move(file_path, destination_path)
-        # print(f"Файл перемещен в {destination_path}")
+        destination_path = os.path.join(path_done, file)
+        shutil.move(file_path, destination_path)
+        print(f"Файл перемещен в {destination_path}")
 
         # print('-' * 30)
 
@@ -46,6 +46,9 @@ def start(nums):
         threads_num = 10
         data_len = len(nums)
         ids = []
+        '''
+            ПОЛОМАН ЦИКЛ - ПРОВРИТЬ!!!!
+        '''
         for el in range(0, data_len, threads_num):
             batch = nums[el:el + threads_num]
             for i in batch:
@@ -62,6 +65,10 @@ def start(nums):
         if connection:
             connection.close()
             print("[INFO] Сбор данных закончен")
+
+
+def tst():
+    test(0)
 
 
 def main():
@@ -81,7 +88,7 @@ def main():
     nums = get_nums_list(star_path, done_path)
     print("start")
     start(nums)
-
+    # tst()
     # print(nums)
     print("end")
 

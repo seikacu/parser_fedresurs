@@ -20,7 +20,7 @@ def insert_sign_cards(connection, url, real_id, period, dogovor, dogovor_date, d
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                f"""INSERT INTO cards (url, done, real_id, period, dogovor, dogovor_date, date_publish,
+                f"""INSERT INTO cards_ (url, done, real_id, period, dogovor, dogovor_date, date_publish,
                 type, period_start, period_end, comments) VALUES
                 ('{url}', '{done}', '{real_id}', '{period}', '{dogovor}', '{dogovor_date}', '{date_publish}',
                 '{type_card}', '{period_start}', '{period_end}', '{comments}');"""
@@ -36,11 +36,12 @@ def insert_change_cards(connection, url, real_id, period, dogovor, dogovor_main_
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                f"""INSERT INTO cards_change (url, done, real_id, period, dogovor, dogovor_main_real_id,
-                dogovor_main_url, dogovor_date, date_publish, type, period_start, period_end, date_add, comments)
+                f"""INSERT INTO cards_change_ (url, done, real_id, period, dogovor, dogovor_main_real_id,
+                dogovor_main_url, dogovor_date, date_publish, type, period_start, period_end, date_add, comments,
+                main_card)
                 VALUES ('{url}', '{done}', '{real_id}', '{period}', '{dogovor}', '{dogovor_main_real_id}',
                 '{dogovor_main_url}', '{dogovor_date}', '{date_publish}', '{type_card}', '{period_start}',
-                '{period_end}', '{date_add}', '{comments}');"""
+                '{period_end}', '{date_add}', '{comments}', '');"""
             )
     except Exception as _ex:
         log.write_log("db_sql_insert_to_table ", _ex)
@@ -53,7 +54,7 @@ def insert_stop_cards(connection, url, real_id, period, dogovor, dogovor_main_re
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                f"""INSERT INTO cards_stop (url, done, real_id, period, dogovor, dogovor_main_real_id,
+                f"""INSERT INTO cards_stop_ (url, done, real_id, period, dogovor, dogovor_main_real_id,
                 dogovor_main_url, reason_stop, dogovor_date, dogovor_stop_date, date_publish, comments, type) VALUES
                 ('{url}', '{done}', '{real_id}', '{period}', '{dogovor}', '{dogovor_main_real_id}',
                 '{dogovor_main_url}', '{reason_stop}', '{dogovor_date}', '{dogovor_stop_date}', '{date_publish}',
@@ -65,7 +66,20 @@ def insert_stop_cards(connection, url, real_id, period, dogovor, dogovor_main_re
         pass
 
 
-def insert_less(connection, url, name, inn, ogrn, table):
+def insert_lessees(connection, url, name, inn, ogrn, table):
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""INSERT INTO {table} (card_id, name, inn, ogrn, nomreg) VALUES 
+                    ('{url}', '{name}', '{inn}', '{ogrn}', '');"""
+            )
+    except Exception as _ex:
+        log.write_log("db_sql_insert_to_table ", _ex)
+        print("db_sql_insert_to_table_  Error while working with PostgreSQL", _ex)
+        pass
+
+
+def insert_lessors(connection, url, name, inn, ogrn, table):
     try:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -82,9 +96,10 @@ def insert_objects(connection, url, object_guid, object_name, object_class, obje
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                f"""INSERT INTO {table} (card_id, guid, name, class, description, total) VALUES 
+                f"""INSERT INTO {table} (card_id, guid, name, class, description, total, category, category_word_w,
+                type, type_word, marka, model) VALUES 
                     ('{url}', '{object_guid}', '{object_name}', '{object_class}', '{object_description}',
-                    '{object_total}');"""
+                    '{object_total}', '', '', '', '', '', '');"""
             )
     except Exception as _ex:
         log.write_log("db_sql_insert_to_table ", _ex)

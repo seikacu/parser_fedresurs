@@ -2,6 +2,7 @@ import threading
 import time
 import zipfile
 import uuid
+from datetime import datetime
 
 import secure
 
@@ -15,12 +16,13 @@ from fake_useragent import UserAgent
 from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 
-from db_sql import insert_sign_cards, insert_change_cards, insert_stop_cards, insert_less, insert_objects
+from db_sql import insert_sign_cards, insert_change_cards, insert_stop_cards, insert_objects, insert_lessees, \
+    insert_lessors
 
 
 def set_driver_options(options):
     # безголовый режим браузера
-    # options.add_argument('--headless=new')
+    options.add_argument('--headless=new')
     options.add_argument("--disable-infobars")
     options.add_argument("--disable-notifications")
     options.add_argument('--ignore-certificate-errors')
@@ -32,22 +34,13 @@ def set_driver_options(options):
     options.add_experimental_option("prefs", prefs)
 
 
-def get_selenium_driver(use_proxy, num_proxy):
+def get_selenium_driver(use_proxy):
     ua = UserAgent()
     options = webdriver.ChromeOptions()
     set_driver_options(options)
 
     if use_proxy:
-        options.add_experimental_option('excludeSwitches', ['enable-logging'])
-        options.add_experimental_option('excludeSwitches', ['enable-automation'])
-        options.add_experimental_option('useAutomationExtension', False)
-        plugin_file = 'proxy_auth_plugin.zip'
-
-        with zipfile.ZipFile(plugin_file, 'w') as zp:
-            zp.writestr('manifest.json', secure.get_proxy_pref(num_proxy, 0))
-            zp.writestr('background.js', secure.get_proxy_pref(num_proxy, 1))
-
-        options.add_extension(plugin_file)
+        set_proxy(options)
 
     options.add_argument(f'--user-agent={ua.random}')
 
@@ -59,6 +52,17 @@ def get_selenium_driver(use_proxy, num_proxy):
     driver = webdriver.Chrome(service=service, options=options)
 
     return driver
+
+
+def set_proxy(options):
+    options.add_experimental_option('excludeSwitches', ['enable-logging'])
+    options.add_experimental_option('excludeSwitches', ['enable-automation'])
+    options.add_experimental_option('useAutomationExtension', False)
+    plugin_file = 'proxy_auth_plugin.zip'
+    with zipfile.ZipFile(plugin_file, 'w') as zp:
+        zp.writestr('manifest.json', secure.get_proxy_pref(0))
+        zp.writestr('background.js', secure.get_proxy_pref(1))
+    options.add_extension(plugin_file)
 
 
 def get_element_text(driver: webdriver.Chrome, path: str) -> str:
@@ -81,13 +85,6 @@ def fill_data(connection, id_db):
     link = 'https://fedresurs.ru/search/encumbrances'
 
     done = 0
-
-    '''
-    ПУБЛИКАТОР - куда его грузить???
-    '''
-    publisher_name = ''
-    publisher_inn = 0
-    publisher_ogrn = 0
 
     '''
     CARDS
@@ -144,12 +141,16 @@ def fill_data(connection, id_db):
     status = ''
 
     try:
-        driver = get_selenium_driver(True, secure.GLOB_ID)
+        driver = get_selenium_driver(True)
         driver.get(link)
 
         '''
         SEARCH
         '''
+        but_close = WebDriverWait(driver, 5).until(ex_cond.presence_of_element_located((
+            By.CLASS_NAME, 'btn-close')))
+        if but_close:
+            but_close.click()
         open_expand_form = WebDriverWait(driver, 5).until(ex_cond.presence_of_element_located((
             By.CLASS_NAME, 'open_expand_form')))
         if open_expand_form:
@@ -203,20 +204,10 @@ def fill_data(connection, id_db):
 
             spans = subject.find_elements(By.TAG_NAME, 'span')
             if spans:
-                date_publish = spans[-1].text.split(' ')[1]
+                date_publish = get_date_format(spans[-1].text.split(' ')[1], '%d.%m.%Y')
 
             cards = driver.find_elements(By.CLASS_NAME, 'card-section')
             if cards:
-                '''
-                    ПУБЛИКАТОР
-                '''
-                publisher = cards[0].find_element(By.CLASS_NAME, 'main')
-                if publisher:
-                    bp = get_bp(publisher)
-                    publisher_name = bp[0]
-                    publisher_inn = bp[1]
-                    publisher_ogrn = bp[2]
-
                 '''
                 TABLE CARDS
                 '''
@@ -237,7 +228,8 @@ def fill_data(connection, id_db):
                         vals = get_main_dog(fields)
                         dogovor_main_real_id = vals[0]
                         dogovor_main_url = vals[1]
-                        dogovor_stop_date = fields[1].find_element(By.CLASS_NAME, 'field-value').text
+                        dogovor_stop_date = get_date_format(fields[1].find_element(By.CLASS_NAME, 'field-value').text,
+                                                            '%d.%m.%Y')
                         reason_stop = fields[2].find_element(By.CLASS_NAME, 'field-value').text
 
                     dog = fields[i].find_element(By.CLASS_NAME, 'field-value')
@@ -245,13 +237,14 @@ def fill_data(connection, id_db):
                         vals = dog.find_elements(By.TAG_NAME, 'span')
                         if vals:
                             dogovor = vals[0].text
-                            dogovor_date = vals[1].text.split(' ')[1]
+                            dogovor_date = get_date_format(vals[1].text.split(' ')[1], '%d.%m.%Y')
+
                     if status == 'sign' or status == 'change':
                         srok_arendy = fields[j].find_element(By.CLASS_NAME, 'field-value')
                         if srok_arendy:
                             period = srok_arendy.text.replace(' ', '')
-                            period_start = period.split('-')[0]
-                            period_end = period.split('-')[1]
+                            period_start = get_date_format(period.split('-')[0], '%d.%m.%Y')
+                            period_end = get_date_format(period.split('-')[1], '%d.%m.%Y')
                 try:
                     com_el = cards[1].find_element(By.XPATH, '//div[contains(text(), "Комментарий")]')
                     if com_el:
@@ -311,8 +304,12 @@ def fill_data(connection, id_db):
         pass
     except WebDriverException as ex:
         print(ex)
-        change_proxy(connection, ex, id_db)
         done = 1
+        change_proxy()
+        if driver:
+            driver.close()
+            driver.quit()
+        fill_data(connection, id_db)
         pass
     finally:
         if driver:
@@ -324,22 +321,27 @@ def fill_data(connection, id_db):
     if status == 'sign':
         insert_sign_cards(connection, url, real_id, period, dogovor, dogovor_date, date_publish, type_card,
                           period_start, period_end, comments, done)
-        insert_less(connection, url, lessees_name, lessees_inn, lessees_ogrn, 'card_lessees')
-        insert_less(connection, url, lessor_name, lessor_inn, lessor_ogrn, 'card_lessors')
+        insert_lessees(connection, url, lessees_name, lessees_inn, lessees_ogrn, 'card_lessees_')
+        insert_lessors(connection, url, lessor_name, lessor_inn, lessor_ogrn, 'card_lessors_')
         insert_objects(connection, url, object_guid, object_name, object_class, object_description, object_total,
-                       'card_objects')
+                       'card_objects_')
     elif status == 'change':
         insert_change_cards(connection, url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url,
                             dogovor_date, date_publish, type_card, period_start, period_end, date_add, comments, done)
-        insert_less(connection, url, lessees_name, lessees_inn, lessees_ogrn, 'card_lessees_change')
-        insert_less(connection, url, lessor_name, lessor_inn, lessor_ogrn, 'card_lessors_change')
+        insert_lessees(connection, url, lessees_name, lessees_inn, lessees_ogrn, 'card_lessees_change_')
+        insert_lessors(connection, url, lessor_name, lessor_inn, lessor_ogrn, 'card_lessors_change_')
         insert_objects(connection, url, object_guid, object_name, object_class, object_description, object_total,
-                       'card_objects_change')
+                       'card_objects_change_')
     elif status == 'stop':
         insert_stop_cards(connection, url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url,
                           reason_stop, dogovor_date, dogovor_stop_date, date_publish, comments, type_card, done)
-        insert_less(connection, url, lessees_name, lessees_inn, lessees_ogrn, 'card_lessees_stop')
-        insert_less(connection, url, lessor_name, lessor_inn, lessor_ogrn, 'card_lessors_stop')
+        insert_lessees(connection, url, lessees_name, lessees_inn, lessees_ogrn, 'card_lessees_stop_')
+        insert_lessors(connection, url, lessor_name, lessor_inn, lessor_ogrn, 'card_lessors_stop_')
+
+
+def get_date_format(date_str, date_format):
+    date = datetime.strptime(date_str, date_format)
+    return date
 
 
 def generate_guid():
@@ -378,24 +380,42 @@ def get_bp(data):
     return bp
 
 
-'''
-    ДОРАБОТАТЬ ПРОКСИ
-        - учесть в работе колличество прокчи (считать их при запуске)
-'''
-
-
-def change_proxy(connection, ex, id_bd):
-    reason = "clicked_get_phone _ ОШИБКА ПРОКСИ"
-    secure.log.write_log(reason, ex)
-    # link = driver.current_url
-    if secure.GLOB_ID < 1:
-        secure.GLOB_ID += 1
+def change_proxy():
+    num_procs = secure.num_proxs
+    if secure.PROXY_ID < num_procs - 1:
+        secure.PROXY_ID += 1
     else:
-        secure.GLOB_ID = 0
+        secure.PROXY_ID = 0
     print('СМЕНА PROXY')
-    secure.log.write_log("СМЕНА PROXY: ", f'new tk.GLOB_ID: {secure.GLOB_ID}')
-    time.sleep(600)
-    fill_data(connection, id_bd)
+    secure.log.write_log("СМЕНА PROXY: ", f'new PROXY_ID: {secure.PROXY_ID}')
+
+
+def test_next(driver, link, link2, link3, i):
+    driver.get(link)
+    time.sleep(1)
+    driver.get(link2)
+    time.sleep(1)
+    driver.get(link3)
+    time.sleep(1)
+    if i == 2:
+        change_proxy()
+    # test_next(driver, link)
+
+
+def test(i):
+    driver = None
+    try:
+        link = 'https://2ip.ru/'
+        link2 = 'https://ya.ru/'
+        link3 = 'https://mail.ru/'
+        driver = get_selenium_driver(True)
+        test_next(driver, link, link2, link3, i)
+        test(i)
+    finally:
+        if driver:
+            driver.close()
+            driver.quit()
+            i += 1
 
 
 def multi_selen(connection, threads_num, ids):
