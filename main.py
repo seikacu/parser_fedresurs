@@ -67,12 +67,15 @@ def start(nums):
 def main():
     star_path = 'data'
     done_path = 'imported'
+    result_path = 'result'
 
     def create_folders():
         if not os.path.exists(star_path):
             os.mkdir(star_path)
         if not os.path.exists(done_path):
             os.mkdir(done_path)
+        if not os.path.exists(result_path):
+            os.mkdir(result_path)
 
     create_folders()
     nums = get_nums_list(star_path, done_path)
@@ -83,5 +86,8 @@ def main():
     print("end")
 
 
+'''
+    ПРОТЕСТРОВАТЬ CRON
+'''
 if __name__ == '__main__':
     main()

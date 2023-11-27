@@ -68,6 +68,13 @@ def get_element_text(driver: webdriver.Chrome, path: str) -> str:
         return ''
 
 
+'''
+    ДОДЕЛАТЬ:
+        - преобразование дат для запсиси в БД
+        - доработать смену прокси
+'''
+
+
 def fill_data(connection, id_db):
     driver = None
     # link = f'https://fedresurs.ru/search/encumbrances?offset=0&limit=15&searchString={id_db}&group=Leasing'
@@ -369,6 +376,12 @@ def get_bp(data):
     bp.append(inn)
     bp.append(ogrn)
     return bp
+
+
+'''
+    ДОРАБОТАТЬ ПРОКСИ
+        - учесть в работе колличество прокчи (считать их при запуске)
+'''
 
 
 def change_proxy(connection, ex, id_bd):
