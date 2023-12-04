@@ -1,10 +1,15 @@
+import asyncio
+import datetime
+import psutil
 import os
 import re
 import shutil
 
-from db_sql import connect_db
+import secure
+import puppet
 from secure import log
-from selen import multi_selen, test
+from selen import multi_pools
+from selen import sel_test
 
 
 def get_num_line(line):
@@ -29,8 +34,8 @@ def get_nums_list(start_path, path_done):
 
         # Перемещение прочитанного файла в отдельную папку
         destination_path = os.path.join(path_done, file)
-        shutil.move(file_path, destination_path)
-        print(f"Файл перемещен в {destination_path}")
+        # shutil.move(file_path, destination_path)
+        print(f"The files has been moved to {destination_path}")
 
         # print('-' * 30)
 
@@ -38,40 +43,66 @@ def get_nums_list(start_path, path_done):
 
 
 def start(nums):
-    connection = None
     try:
-        connection = connect_db()
-        connection.autocommit = True
-
-        threads_num = 10
-        data_len = len(nums)
-        ids = []
-        '''
-            ПОЛОМАН ЦИКЛ - ПРОВРИТЬ!!!!
-        '''
-        for el in range(0, data_len, threads_num):
-            batch = nums[el:el + threads_num]
-            for i in batch:
-                ids.append(i)
-            threads_num = len(batch)
-        print(f'Будет запущено {threads_num} параллельных потоков')
-        multi_selen(connection, threads_num, ids)
-
-    except Exception as _ex:
-        print("main_start_", _ex)
-        log.write_log("main_start_", _ex)
+        multi_sel(nums)
+    except Exception as ex:
+        print("main_start_", ex)
+        log.write_log("main_start_", ex)
         pass
-    finally:
-        if connection:
-            connection.close()
-            print("[INFO] Сбор данных закончен")
 
 
-def tst():
-    test(0)
+def multi_sel(nums):
+    threads_num = 12
+    data_len = len(nums)
+    for el in range(0, data_len, threads_num):
+        ids = []
+        batch = nums[el:el + threads_num]
+        for i in batch:
+            ids.append(i)
+        threads_num = len(batch)
+        print(f'[INFO] {threads_num} process will be launched')
+        cpu_count = get_cpu_count()
+        multi_pools(cpu_count, ids)
+
+
+def get_cpu_count():
+    return psutil.cpu_count()
+
+
+def generate_range(start_num, end_num):
+    numbers = list(range(start_num, end_num + 1))
+    return numbers
+
+
+def card_search(nums):
+    threads_num = 4
+    data_len = len(nums)
+    for el in range(0, data_len, threads_num):
+        ids = []
+        batch = nums[el:el + threads_num]
+        for i in batch:
+            ids.append(i)
+        threads_num = len(batch)
+        print(f'[INFO] {threads_num} process will be launched')
+        cpu_count = get_cpu_count()
+        sel_test(ids)
+
+
+def multi_petter(nums):
+    threads_num = 10
+    data_len = len(nums)
+    for el in range(0, data_len, threads_num):
+        ids = []
+        batch = nums[el:el + threads_num]
+        for i in batch:
+            ids.append(i)
+        threads_num = len(batch)
+        print(f'[INFO] {threads_num} process will be launched')
+        asyncio.get_event_loop().run_until_complete(puppet.multi_petts(ids))
 
 
 def main():
+    time_start = datetime.datetime.now()
     star_path = 'data'
     done_path = 'imported'
     result_path = 'result'
@@ -85,12 +116,22 @@ def main():
             os.mkdir(result_path)
 
     create_folders()
-    nums = get_nums_list(star_path, done_path)
     print("start")
-    start(nums)
-    # tst()
-    # print(nums)
+    nums = []
+    if secure.mode == 2:
+        nums = get_nums_list(star_path, done_path)
+        multi_sel(nums)
+    if secure.mode == 1:
+        card_search(nums)
+        nums = generate_range(secure.start_num, secure.end_num)
+    if secure.mode == 3:
+        nums = get_nums_list(star_path, done_path)
+        multi_petter(nums)
     print("end")
+    time_end = datetime.datetime.now()
+    time_diff = time_end - time_start
+    tsecs = time_diff.total_seconds()
+    print(f"[INFO] Script with {len(nums)} entries worked for {tsecs} seconds.")
 
 
 '''

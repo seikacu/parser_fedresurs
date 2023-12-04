@@ -1,8 +1,10 @@
+import asyncio
 import threading
 import time
 import zipfile
 import uuid
-from datetime import datetime
+import datetime
+from multiprocessing import Pool
 
 import secure
 
@@ -14,7 +16,6 @@ from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from selenium.webdriver.support import expected_conditions as ex_cond
 from fake_useragent import UserAgent
 from selenium.webdriver.support.ui import WebDriverWait
-from webdriver_manager.chrome import ChromeDriverManager
 
 from db_sql import insert_sign_cards, insert_change_cards, insert_stop_cards, insert_objects, insert_lessees, \
     insert_lessors
@@ -22,14 +23,28 @@ from db_sql import insert_sign_cards, insert_change_cards, insert_stop_cards, in
 
 def set_driver_options(options):
     # безголовый режим браузера
+    # options.add_argument('--no-sandbox')
+    # options.add_argument('--disable-setuid-sandbox')
+
+    # options.add_argument("--disable-extensions")  # Отключить расширения
+    options.add_argument("--disable-plugins")  # Отключить плагины
+    options.add_argument("--disable-internal-tmp-true")  # Включить сжатие временных файлов
+
     options.add_argument('--headless=new')
-    options.add_argument("--disable-infobars")
-    options.add_argument("--disable-notifications")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument('--disable-accelerated-2d-canvas')
+    options.add_argument("--disable-font-antialiasing")
+    options.add_argument("--disable-preconnect")
+    options.add_argument("--disk-cache-size=0")
+    options.add_argument('--disable-infobars')
+    options.add_argument('--disable-notifications')
     options.add_argument('--ignore-certificate-errors')
-    options.add_argument('--ignore-ssl-errors')
-    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument('--ignore-ssl- errors')
+    options.add_argument('--disable-blink-features=AutomationControlled')
     prefs = {
         'profile.managed_default_content_settings.images': 2,
+        'css.animations': False
     }
     options.add_experimental_option("prefs", prefs)
 
@@ -48,7 +63,7 @@ def get_selenium_driver(use_proxy):
     # caps['pageLoadStrategy'] = 'normal'
     caps['pageLoadStrategy'] = 'eager'
 
-    service = Service(ChromeDriverManager().install(), desired_capabilities=caps)
+    service = Service('./chromedriver', desired_capabilities=caps)
     driver = webdriver.Chrome(service=service, options=options)
 
     return driver
@@ -74,14 +89,12 @@ def get_element_text(driver: webdriver.Chrome, path: str) -> str:
 
 '''
     ДОДЕЛАТЬ:
-        - преобразование дат для запсиси в БД
         - доработать смену прокси
 '''
 
 
-def fill_data(connection, id_db):
+def fill_data(id_db):
     driver = None
-    # link = f'https://fedresurs.ru/search/encumbrances?offset=0&limit=15&searchString={id_db}&group=Leasing'
     link = 'https://fedresurs.ru/search/encumbrances'
 
     done = 0
@@ -142,6 +155,7 @@ def fill_data(connection, id_db):
 
     try:
         driver = get_selenium_driver(True)
+        driver.set_window_size(250, 250)
         driver.get(link)
 
         '''
@@ -151,6 +165,12 @@ def fill_data(connection, id_db):
             By.CLASS_NAME, 'btn-close')))
         if but_close:
             but_close.click()
+        # try:
+        #     but_close = driver.find_element(By.CLASS_NAME, 'btn-close')
+        #     if but_close:
+        #         but_close.click()
+        # except NoSuchElementException:
+        #     pass
         open_expand_form = WebDriverWait(driver, 5).until(ex_cond.presence_of_element_located((
             By.CLASS_NAME, 'open_expand_form')))
         if open_expand_form:
@@ -256,7 +276,7 @@ def fill_data(connection, id_db):
                 '''
                 TABLE CARD_LESSORS
                 '''
-                field_lessors = cards[1].find_element(By.XPATH, '//div[contains(@class, "lessees")]')  # lessors
+                field_lessors = cards[1].find_element(By.XPATH, '//div[contains(@class, "lessees")]')
                 if field_lessors:
                     lessor = field_lessors.find_element(By.CLASS_NAME, 'field-value')
                     if lessor:
@@ -268,7 +288,7 @@ def fill_data(connection, id_db):
                 '''
                 TABLE CARD_LESSEES
                 '''
-                fields_lessees = cards[1].find_element(By.XPATH, '//div[contains(@class, "lessors")]')  # lessees
+                fields_lessees = cards[1].find_element(By.XPATH, '//div[contains(@class, "lessors")]')
                 if fields_lessees:
                     lessees = fields_lessees.find_element(By.CLASS_NAME, 'field-value')
                     if lessees:
@@ -292,55 +312,73 @@ def fill_data(connection, id_db):
                                 object_class = cols[1].find_element(By.TAG_NAME, 'span').text
                                 object_description = cols[2].text.rstrip()
                                 object_total = f'{object_name} {object_class} {object_description}'
+
+        if status == 'sign' or status == 'change':
+            object_guid = generate_guid()
+        if status == 'sign':
+            asyncio.run(insert_sign_cards(url, real_id, period, dogovor, dogovor_date, date_publish, type_card,
+                                          period_start, period_end, comments, done))
+            asyncio.run(insert_lessees(url, lessees_name, lessees_inn, lessees_ogrn, 'card_lessees_'))
+            asyncio.run(insert_lessors(url, lessor_name, lessor_inn, lessor_ogrn, 'card_lessors_'))
+            asyncio.run(insert_objects(url, object_guid, object_name, object_class, object_description, object_total,
+                                       'card_objects_'))
+        elif status == 'change':
+            asyncio.run(insert_change_cards(url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url,
+                                            dogovor_date, date_publish, type_card, period_start, period_end, date_add,
+                                            comments, done))
+            asyncio.run(insert_lessees(url, lessees_name, lessees_inn, lessees_ogrn, 'card_lessees_change_'))
+            asyncio.run(insert_lessors(url, lessor_name, lessor_inn, lessor_ogrn, 'card_lessors_change_'))
+            asyncio.run(insert_objects(url, object_guid, object_name, object_class, object_description, object_total,
+                                       'card_objects_change_'))
+        elif status == 'stop':
+            asyncio.run(insert_stop_cards(url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url,
+                                          reason_stop, dogovor_date, dogovor_stop_date, date_publish, comments,
+                                          type_card, done))
+            asyncio.run(insert_lessees(url, lessees_name, lessees_inn, lessees_ogrn, 'card_lessees_stop_'))
+            asyncio.run(insert_lessors(url, lessor_name, lessor_inn, lessor_ogrn, 'card_lessors_stop_'))
+
     except NoSuchElementException as ex:
-        reason = "selen_fill_data_Элемент не найден"
+        reason = "selen_fill_data_NoSuchElement_"
         secure.log.write_log(reason, ex)
-        done = 1
+        # done = 1
         pass
     except TimeoutException as ex:
-        reason = "selen_fill_data_Нет ответа от web_element"
+        reason = "selen_fill_data_TimeoutException_"
         secure.log.write_log(reason, ex)
-        done = 1
+        # done = 1
+        fill_data(id_db)
         pass
     except WebDriverException as ex:
         print(ex)
-        done = 1
+        # done = 1
         change_proxy()
-        if driver:
-            driver.close()
-            driver.quit()
-        fill_data(connection, id_db)
+        # if driver:
+        #     driver.close()
+        #     driver.quit()
+        fill_data(id_db)
+        pass
+    try:
+        error_page = driver.find_element(By.TAG_NAME, 'h3')
+        if error_page:
+            err = error_page.text.replace(' ', '')
+            if err == '429':
+                fill_data(id_db)
+                # els = driver.find_elements(By.TAG_NAME, 'a')
+                # for el in els:
+                #     reason = el.text
+                #     if 'предыдущую' in reason:
+                #         el.click()
+    except NoSuchElementException:
         pass
     finally:
         if driver:
             driver.close()
             driver.quit()
             print("[INFO] Selen driver closed")
-    if status == 'sign' or status == 'change':
-        object_guid = generate_guid()
-    if status == 'sign':
-        insert_sign_cards(connection, url, real_id, period, dogovor, dogovor_date, date_publish, type_card,
-                          period_start, period_end, comments, done)
-        insert_lessees(connection, url, lessees_name, lessees_inn, lessees_ogrn, 'card_lessees_')
-        insert_lessors(connection, url, lessor_name, lessor_inn, lessor_ogrn, 'card_lessors_')
-        insert_objects(connection, url, object_guid, object_name, object_class, object_description, object_total,
-                       'card_objects_')
-    elif status == 'change':
-        insert_change_cards(connection, url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url,
-                            dogovor_date, date_publish, type_card, period_start, period_end, date_add, comments, done)
-        insert_lessees(connection, url, lessees_name, lessees_inn, lessees_ogrn, 'card_lessees_change_')
-        insert_lessors(connection, url, lessor_name, lessor_inn, lessor_ogrn, 'card_lessors_change_')
-        insert_objects(connection, url, object_guid, object_name, object_class, object_description, object_total,
-                       'card_objects_change_')
-    elif status == 'stop':
-        insert_stop_cards(connection, url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url,
-                          reason_stop, dogovor_date, dogovor_stop_date, date_publish, comments, type_card, done)
-        insert_lessees(connection, url, lessees_name, lessees_inn, lessees_ogrn, 'card_lessees_stop_')
-        insert_lessors(connection, url, lessor_name, lessor_inn, lessor_ogrn, 'card_lessors_stop_')
 
 
 def get_date_format(date_str, date_format):
-    date = datetime.strptime(date_str, date_format)
+    date = datetime.datetime.strptime(date_str, date_format)
     return date
 
 
@@ -371,7 +409,7 @@ def get_bp(data):
     name = data.text
     spl = name.split('\n')
     if len(spl) == 3:
-        name = spl[0]
+        name = spl[0].replace("'", '"')
         inn = spl[1].split(':')[-1]
         ogrn = spl[2].split(':')[-1]
     bp.append(name)
@@ -386,44 +424,82 @@ def change_proxy():
         secure.PROXY_ID += 1
     else:
         secure.PROXY_ID = 0
-    print('СМЕНА PROXY')
-    secure.log.write_log("СМЕНА PROXY: ", f'new PROXY_ID: {secure.PROXY_ID}')
+    print('[INFO] CHANGE PROXY')
+    secure.log.write_log("CHANGE PROXY: ", f'new PROXY_ID: {secure.PROXY_ID}')
 
 
-def test_next(driver, link, link2, link3, i):
-    driver.get(link)
-    time.sleep(1)
-    driver.get(link2)
-    time.sleep(1)
-    driver.get(link3)
-    time.sleep(1)
-    if i == 2:
-        change_proxy()
-    # test_next(driver, link)
+def multi_pools(cpu_count, ids):
+    spl = split_list(ids)
+    process_count = int(cpu_count)
+    p = Pool(processes=process_count)
+    p.map(multi_start, spl)
 
 
-def test(i):
-    driver = None
-    try:
-        link = 'https://2ip.ru/'
-        link2 = 'https://ya.ru/'
-        link3 = 'https://mail.ru/'
-        driver = get_selenium_driver(True)
-        test_next(driver, link, link2, link3, i)
-        test(i)
-    finally:
-        if driver:
-            driver.close()
-            driver.quit()
-            i += 1
-
-
-def multi_selen(connection, threads_num, ids):
+def multi_start(ids):
     threads = []
-    for i in range(0, threads_num):
-        thread = threading.Thread(target=fill_data, args=(connection, ids[i],))
+    for i in range(0, len(ids)):
+        thread = threading.Thread(target=fill_data, args=(ids[i],))
         threads.append(thread)
         thread.start()
 
     for thread in threads:
         thread.join()
+
+
+'''
+    4,3 - 4p,3t
+    4,2 - 3p,2t
+'''
+def split_list(lst):
+    size = len(lst) // 4
+    return [lst[i:i + size] for i in range(0, len(lst), 3)]
+
+
+def sel_test(ids):
+    # spl = split_list(ids)
+    process_count = len(ids)
+    p = Pool(processes=process_count)
+    # for i in range(0, len(ids)):
+    p.map(fill_test, ids)
+
+
+def fill_test(id_db):
+    link = 'https://fedresurs.ru/search/encumbrances'
+    driver = get_selenium_driver(True)
+    driver.set_window_size(250, 250)
+    time_start = datetime.datetime.now()
+    driver.get(link)
+    time_end = datetime.datetime.now()
+    time_diff = time_end - time_start
+    tsecs = time_diff.total_seconds()
+    print(f"[INFO] Script open page {tsecs} seconds.")
+
+    open_expand_form = WebDriverWait(driver, 5).until(ex_cond.presence_of_element_located((
+        By.CLASS_NAME, 'open_expand_form')))
+    if open_expand_form:
+        open_expand_form.click()
+    input_search = driver.find_element(By.XPATH, '//input[contains(@type, "text")]')
+    if input_search:
+        input_search.send_keys(id_db)
+    val = driver.find_element(By.CLASS_NAME, 'value')
+    if val:
+        val.click()
+        options = WebDriverWait(driver, 5).until(ex_cond.presence_of_element_located((
+            By.CLASS_NAME, 'options')))
+        if options:
+            lis = options.find_elements(By.TAG_NAME, 'li')
+            for li in lis:
+                name = li.text.lower()
+                if name == 'лизинг':
+                    li.click()
+                    break
+    but_submit = driver.find_element(By.XPATH, '//button[contains(@type, "submit")]')
+    if but_submit:
+        but_submit.click()
+
+    card_link = WebDriverWait(driver, 30).until(ex_cond.presence_of_element_located((
+        By.XPATH, '//div[contains(@class, "encumbrances-result__body")]')))
+    if card_link:
+        link = card_link.find_element(By.TAG_NAME, 'a').get_attribute('href')
+        print(link)
+    pass
