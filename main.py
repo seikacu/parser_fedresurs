@@ -1,12 +1,13 @@
 import asyncio
 import datetime
-import psutil
 import os
+import psutil
 import re
 import shutil
 
 import secure
 import puppet
+
 from secure import log
 from selen import multi_pools
 from selen import sel_test
@@ -74,22 +75,8 @@ def generate_range(start_num, end_num):
     return numbers
 
 
-def card_search(nums):
-    threads_num = 4
-    data_len = len(nums)
-    for el in range(0, data_len, threads_num):
-        ids = []
-        batch = nums[el:el + threads_num]
-        for i in batch:
-            ids.append(i)
-        threads_num = len(batch)
-        print(f'[INFO] {threads_num} process will be launched')
-        cpu_count = get_cpu_count()
-        sel_test(ids)
-
-
 def multi_petter(nums):
-    threads_num = 10
+    threads_num = 8
     data_len = len(nums)
     for el in range(0, data_len, threads_num):
         ids = []
@@ -122,8 +109,8 @@ def main():
         nums = get_nums_list(star_path, done_path)
         multi_sel(nums)
     if secure.mode == 1:
-        card_search(nums)
         nums = generate_range(secure.start_num, secure.end_num)
+        multi_petter(nums)
     if secure.mode == 3:
         nums = get_nums_list(star_path, done_path)
         multi_petter(nums)

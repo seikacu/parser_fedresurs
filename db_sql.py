@@ -1,7 +1,8 @@
 import aiomysql
 import pymysql.cursors
 
-from secure import PSql, log
+from secure import log
+from secure import PSql
 
 
 def connect_db():
@@ -133,52 +134,40 @@ async def close_connection(pool):
 async def insert_sign_cards(url, real_id, period, dogovor, dogovor_date, date_publish, type_card,
                             period_start, period_end, comments, done):
     db_pool = await create_connection()
-
     await write_sign_cards(db_pool, url, real_id, period, dogovor, dogovor_date, date_publish, type_card,
                            period_start, period_end, comments, done)
-
     await close_connection(db_pool)
 
 
 async def insert_change_cards(url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url, dogovor_date,
                               date_publish, type_card, period_start, period_end, date_add, comments, done):
     db_pool = await create_connection()
-
     await write_change_cards(db_pool, url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url,
                              dogovor_date, date_publish, type_card, period_start, period_end, date_add, comments, done)
-
     await close_connection(db_pool)
 
 
 async def insert_stop_cards(url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url, reason_stop,
                             dogovor_date, dogovor_stop_date, date_publish, comments, type_card, done):
     db_pool = await create_connection()
-
     await write_stop_cards(db_pool, url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url, reason_stop,
                            dogovor_date, dogovor_stop_date, date_publish, comments, type_card, done)
-
     await close_connection(db_pool)
 
 
 async def insert_lessees(url, name, inn, ogrn, table):
     db_pool = await create_connection()
-
     await write_lessees(db_pool, url, name, inn, ogrn, table)
-
     await close_connection(db_pool)
 
 
 async def insert_lessors(url, name, inn, ogrn, table):
     db_pool = await create_connection()
-
     await write_lessors(db_pool, url, name, inn, ogrn, table)
-
     await close_connection(db_pool)
 
 
 async def insert_objects(url, object_guid, object_name, object_class, object_description, object_total, table):
     db_pool = await create_connection()
-
     await write_objects(db_pool, url, object_guid, object_name, object_class, object_description, object_total, table)
-
     await close_connection(db_pool)
