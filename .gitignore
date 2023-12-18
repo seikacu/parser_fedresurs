@@ -167,3 +167,5 @@ cython_debug/
 /result/
 /chromedriver
 /chromedriver-linux64.zip
+proxy
+proxy.txt

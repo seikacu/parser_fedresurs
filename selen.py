@@ -315,27 +315,27 @@ def fill_data(id_db):
 
         if status == 'sign' or status == 'change':
             object_guid = generate_guid()
-        # if status == 'sign':
-        #     asyncio.run(insert_sign_cards(url, real_id, period, dogovor, dogovor_date, date_publish, type_card,
-        #                                   period_start, period_end, comments, done))
-        #     asyncio.run(insert_lessees(url, lessees_name, lessees_inn, lessees_ogrn, 'card_lessees_'))
-        #     asyncio.run(insert_lessors(url, lessor_name, lessor_inn, lessor_ogrn, 'card_lessors_'))
-        #     asyncio.run(insert_objects(url, object_guid, object_name, object_class, object_description, object_total,
-        #                                'card_objects_'))
-        # elif status == 'change':
-        #     asyncio.run(insert_change_cards(url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url,
-        #                                     dogovor_date, date_publish, type_card, period_start, period_end, date_add,
-        #                                     comments, done))
-        #     asyncio.run(insert_lessees(url, lessees_name, lessees_inn, lessees_ogrn, 'card_lessees_change_'))
-        #     asyncio.run(insert_lessors(url, lessor_name, lessor_inn, lessor_ogrn, 'card_lessors_change_'))
-        #     asyncio.run(insert_objects(url, object_guid, object_name, object_class, object_description, object_total,
-        #                                'card_objects_change_'))
-        # elif status == 'stop':
-        #     asyncio.run(insert_stop_cards(url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url,
-        #                                   reason_stop, dogovor_date, dogovor_stop_date, date_publish, comments,
-        #                                   type_card, done))
-        #     asyncio.run(insert_lessees(url, lessees_name, lessees_inn, lessees_ogrn, 'card_lessees_stop_'))
-        #     asyncio.run(insert_lessors(url, lessor_name, lessor_inn, lessor_ogrn, 'card_lessors_stop_'))
+        if status == 'sign':
+            asyncio.run(insert_sign_cards(url, real_id, period, dogovor, dogovor_date, date_publish, type_card,
+                                          period_start, period_end, comments, done))
+            asyncio.run(insert_lessees(url, lessees_name, lessees_inn, lessees_ogrn, 'card_lessees_'))
+            asyncio.run(insert_lessors(url, lessor_name, lessor_inn, lessor_ogrn, 'card_lessors_'))
+            asyncio.run(insert_objects(url, object_guid, object_name, object_class, object_description, object_total,
+                                       'card_objects_'))
+        elif status == 'change':
+            asyncio.run(insert_change_cards(url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url,
+                                            dogovor_date, date_publish, type_card, period_start, period_end, date_add,
+                                            comments, done))
+            asyncio.run(insert_lessees(url, lessees_name, lessees_inn, lessees_ogrn, 'card_lessees_change_'))
+            asyncio.run(insert_lessors(url, lessor_name, lessor_inn, lessor_ogrn, 'card_lessors_change_'))
+            asyncio.run(insert_objects(url, object_guid, object_name, object_class, object_description, object_total,
+                                       'card_objects_change_'))
+        elif status == 'stop':
+            asyncio.run(insert_stop_cards(url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url,
+                                          reason_stop, dogovor_date, dogovor_stop_date, date_publish, comments,
+                                          type_card, done))
+            asyncio.run(insert_lessees(url, lessees_name, lessees_inn, lessees_ogrn, 'card_lessees_stop_'))
+            asyncio.run(insert_lessors(url, lessor_name, lessor_inn, lessor_ogrn, 'card_lessors_stop_'))
 
     except NoSuchElementException as ex:
         reason = "selen_fill_data_NoSuchElement_"

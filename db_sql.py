@@ -1,20 +1,10 @@
+import asyncio
 import aiomysql
-import pymysql.cursors
+
+import secure
 
 from secure import log
 from secure import PSql
-
-
-def connect_db():
-    connection = pymysql.connect(
-        host=PSql.host,
-        user=PSql.user,
-        password=PSql.password,
-        database=PSql.db_name,
-        charset=PSql.charset,
-        # cursorclass=pymysql.cursors.DictCursor
-    )
-    return connection
 
 
 async def create_connection():
@@ -23,6 +13,9 @@ async def create_connection():
         user=PSql.user,
         password=PSql.password,
         db=PSql.db_name,
+        connect_timeout=60,
+        # maxsize=10,
+        # minsize=1,
         charset=PSql.charset,
         autocommit=True
     )
@@ -34,7 +27,7 @@ async def write_sign_cards(pool, url, real_id, period, dogovor, dogovor_date, da
     try:
         async with pool.acquire() as connection:
             async with connection.cursor() as cursor:
-                await cursor.execute(f"""INSERT INTO cards_ (url, done, real_id, period, dogovor, dogovor_date,
+                await cursor.execute(f"""INSERT INTO cards (url, done, real_id, period, dogovor, dogovor_date,
                 date_publish, type, period_start, period_end, comments) VALUES
                     ('{url}', '{done}', '{real_id}', '{period}', '{dogovor}', '{dogovor_date}', '{date_publish}',
                     '{type_card}', '{period_start}', '{period_end}', '{comments}');"""
@@ -51,9 +44,9 @@ async def write_change_cards(pool, url, real_id, period, dogovor, dogovor_main_r
         async with pool.acquire() as connection:
             async with connection.cursor() as cursor:
                 await cursor.execute(
-                    f"""INSERT INTO cards_change_ (url, done, real_id, period, dogovor, dogovor_main_real_id,
-                                    dogovor_main_url, dogovor_date, date_publish, type, period_start, period_end, date_add,
-                                    comments, main_card) VALUES
+                    f"""INSERT INTO cards_change (url, done, real_id, period, dogovor, dogovor_main_real_id,
+                                    dogovor_main_url, dogovor_date, date_publish, type, period_start, period_end,
+                                    date_add, comments, main_card) VALUES
                                     ('{url}', '{done}', '{real_id}', '{period}', '{dogovor}', '{dogovor_main_real_id}',
                                     '{dogovor_main_url}', '{dogovor_date}', '{date_publish}', '{type_card}',
                                     '{period_start}', '{period_end}', '{date_add}', '{comments}', '');"""
@@ -70,7 +63,7 @@ async def write_stop_cards(pool, url, real_id, period, dogovor, dogovor_main_rea
         async with pool.acquire() as connection:
             async with connection.cursor() as cursor:
                 await cursor.execute(
-                    f"""INSERT INTO cards_stop_ (url, done, real_id, period, dogovor, dogovor_main_real_id,
+                    f"""INSERT INTO cards_stop (url, done, real_id, period, dogovor, dogovor_main_real_id,
                     dogovor_main_url, reason_stop, dogovor_date, dogovor_stop_date, date_publish, comments, type) VALUES
                     ('{url}', '{done}', '{real_id}', '{period}', '{dogovor}', '{dogovor_main_real_id}',
                     '{dogovor_main_url}', '{reason_stop}', '{dogovor_date}', '{dogovor_stop_date}', '{date_publish}',
@@ -131,17 +124,31 @@ async def close_connection(pool):
     await pool.wait_closed()
 
 
-async def insert_sign_cards(url, real_id, period, dogovor, dogovor_date, date_publish, type_card,
-                            period_start, period_end, comments, done):
-    db_pool = await create_connection()
-    await write_sign_cards(db_pool, url, real_id, period, dogovor, dogovor_date, date_publish, type_card,
-                           period_start, period_end, comments, done)
+async def insert_sign_cards(url, real_id, period, dogovor, dogovor_date, date_publish, type_card, period_start,
+                            period_end, comments, done):
+    db_pool = None
+    try:
+        db_pool = await create_connection()
+    except aiomysql.OperationalError as ex:
+        secure.log.write_log("db_sql_insert_sign_cards", ex)
+        await asyncio.sleep(1)
+        await insert_sign_cards(url, real_id, period, dogovor, dogovor_date, date_publish, type_card, period_start,
+                                period_end, comments, done)
+    await write_sign_cards(db_pool, url, real_id, period, dogovor, dogovor_date, date_publish, type_card, period_start,
+                           period_end, comments, done)
     await close_connection(db_pool)
 
 
 async def insert_change_cards(url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url, dogovor_date,
                               date_publish, type_card, period_start, period_end, date_add, comments, done):
-    db_pool = await create_connection()
+    db_pool = None
+    try:
+        db_pool = await create_connection()
+    except aiomysql.OperationalError as ex:
+        secure.log.write_log("db_sql_insert_change_cards", ex)
+        await asyncio.sleep(1)
+        await insert_change_cards(url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url, dogovor_date,
+                                  date_publish, type_card, period_start, period_end, date_add, comments, done)
     await write_change_cards(db_pool, url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url,
                              dogovor_date, date_publish, type_card, period_start, period_end, date_add, comments, done)
     await close_connection(db_pool)
@@ -149,25 +156,50 @@ async def insert_change_cards(url, real_id, period, dogovor, dogovor_main_real_i
 
 async def insert_stop_cards(url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url, reason_stop,
                             dogovor_date, dogovor_stop_date, date_publish, comments, type_card, done):
-    db_pool = await create_connection()
+    db_pool = None
+    try:
+        db_pool = await create_connection()
+    except aiomysql.OperationalError as ex:
+        secure.log.write_log("db_sql_insert_stop_cards", ex)
+        await asyncio.sleep(1)
+        await insert_stop_cards(url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url, reason_stop,
+                                dogovor_date, dogovor_stop_date, date_publish, comments, type_card, done)
     await write_stop_cards(db_pool, url, real_id, period, dogovor, dogovor_main_real_id, dogovor_main_url, reason_stop,
                            dogovor_date, dogovor_stop_date, date_publish, comments, type_card, done)
     await close_connection(db_pool)
 
 
 async def insert_lessees(url, name, inn, ogrn, table):
-    db_pool = await create_connection()
+    db_pool = None
+    try:
+        db_pool = await create_connection()
+    except aiomysql.OperationalError as ex:
+        secure.log.write_log("db_sql_insert_lessees", ex)
+        await asyncio.sleep(1)
+        await insert_lessees(url, name, inn, ogrn, table)
     await write_lessees(db_pool, url, name, inn, ogrn, table)
     await close_connection(db_pool)
 
 
 async def insert_lessors(url, name, inn, ogrn, table):
-    db_pool = await create_connection()
+    db_pool = None
+    try:
+        db_pool = await create_connection()
+    except aiomysql.OperationalError as ex:
+        secure.log.write_log("db_sql_insert_lessors", ex)
+        await asyncio.sleep(1)
+        await insert_lessors(url, name, inn, ogrn, table)
     await write_lessors(db_pool, url, name, inn, ogrn, table)
     await close_connection(db_pool)
 
 
 async def insert_objects(url, object_guid, object_name, object_class, object_description, object_total, table):
-    db_pool = await create_connection()
+    db_pool = None
+    try:
+        db_pool = await create_connection()
+    except aiomysql.OperationalError as ex:
+        secure.log.write_log("db_sql_insert_objects", ex)
+        await asyncio.sleep(1)
+        await insert_objects(url, object_guid, object_name, object_class, object_description, object_total, table)
     await write_objects(db_pool, url, object_guid, object_name, object_class, object_description, object_total, table)
     await close_connection(db_pool)
